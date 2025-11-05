@@ -32,6 +32,12 @@ CELL = os.environ.get("CELL", "A2")
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 REDIS_TS_KEY = os.environ.get("REDIS_TS_KEY", "total")
 
+def get_ts():
+	'''
+	Return current timestamp in milliseconds.
+	'''
+	return int(datetime.now().timestamp() * 1000)
+
 def check_type(input):
 	'''
 	Check argument type and convert to int if possible
@@ -59,7 +65,7 @@ def get_value(gc, sheet_id, sheet, cell):
 	Assumes the cell contains a numeric value and returns None otherwise.
 	'''
 	value = gc.open_by_key(sheet_id).get_worksheet(sheet).acell(cell).numeric_value
-	ts = int(datetime.now().timestamp() * 1000)
+	ts = get_ts()
 	return value, ts
 
 def add_value(conn, key, ts, value):
