@@ -32,6 +32,12 @@ CELL = os.environ.get("CELL", "A2")
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 REDIS_TS_KEY = os.environ.get("REDIS_TS_KEY", "total")
 
+def get_ts():
+	'''
+	Return current timestamp in milliseconds.
+	'''
+	return int(datetime.now().timestamp() * 1000)
+
 def check_type(input):
 	'''
 	Check argument type and convert to int if possible
@@ -59,13 +65,14 @@ def get_value(gc, sheet_id, sheet, cell):
 	Assumes the cell contains a numeric value and returns None otherwise.
 	'''
 	value = gc.open_by_key(sheet_id).get_worksheet(sheet).acell(cell).numeric_value
-	return value
+	ts = get_ts()
+	return value, ts
 
-def add_value(conn, key, value):
+def add_value(conn, key, ts, value):
 	'''
 	Add value to RedisTimeSeries key.
 	'''
-	conn.ts().add(key, "*", value, retention_msecs=0)
+	conn.ts().add(key, ts, value, retention_msecs=0)
 
 def generate_graph(conn, key, samples, output_file):
 	'''
@@ -110,11 +117,11 @@ def main():
 			gc = api(API_KEY)
 		else:
 			gc = service_account(SERVICE_ACCOUNT_FILE)
-		total = get_value(gc, SHEET_ID, SHEET, CELL)
+		total, ts = get_value(gc, SHEET_ID, SHEET, CELL)
 		if not isinstance(total, int):
 			print(f"Cell {CELL} is not numeric", file=sys.stderr)
 			sys.exit(1)
-		add_value(r, REDIS_TS_KEY, total)
+		add_value(r, REDIS_TS_KEY, ts, total)
 		print(f"Stored {total} into {REDIS_TS_KEY}")
 
 	if args.graph:
