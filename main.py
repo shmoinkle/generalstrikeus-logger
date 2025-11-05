@@ -4,6 +4,8 @@ import sys
 import argparse
 import gspread
 from redis import Redis
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from datetime import datetime
 
