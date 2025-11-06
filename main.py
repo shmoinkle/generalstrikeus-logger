@@ -107,7 +107,7 @@ def generate_graph(conn, key, samples, output_file):
 	# format y-axis labels with human readable totals
 	ax = plt.gca()
 	ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(
-		lambda x, _pos: f"{int(x):,}" if x.is_integer() else f"{x:,.2f}"
+		lambda x, _pos: f"{int(x):,}" if x else f"{x:,.2f}"
 	))
 	plt.xlabel(f"Time ({TIMEZONE})")
 	plt.ylabel("Total Signatures")
@@ -123,7 +123,7 @@ def generate_graph(conn, key, samples, output_file):
 		# draw and annotate markers at specified positions
 		plt.plot(marker_times, marker_values, 'D', color=line_color)
 		for mt, mv in zip(marker_times, marker_values):
-			label = f"{mv:,}" if mv.is_integer() else f"{mv:,.2f}"
+			label = f"{int(mv):,}" if mv else f"{mv:,.2f}"
 			plt.annotate(label, (mt, mv), textcoords="offset points", xytext=(0, 4),
 						 ha='center', va='bottom', fontsize=8, clip_on=False)
 	plt.tight_layout()
