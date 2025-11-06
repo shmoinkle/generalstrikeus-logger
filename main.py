@@ -31,6 +31,12 @@ SHEET = os.environ.get("SHEET", 0)
 CELL = os.environ.get("CELL", "A2")
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 REDIS_TS_KEY = os.environ.get("REDIS_TS_KEY", "total")
+# Going to assume the TZ is the same as the server unless specified
+TIMEZONE = os.environ.get("TIMEZONE")
+if not TIMEZONE:
+	TIMEZONE = datetime.now().astimezone().tzinfo
+else:
+	TIMEZONE = "UTC"
 
 def get_ts():
 	'''
@@ -76,25 +82,52 @@ def add_value(conn, key, ts, value):
 
 def generate_graph(conn, key, samples, output_file):
 	'''
-	Generate a line graph from the collected totals in Redis.
-	Saves the plot to `output_file`.
+	Generate and save a line graph from the collected totals in Redis.
+	Places one marker every one fourth of the graph (including endpoints)
+	and annotates each marker with the total value.
 	'''
-	# fetch most recent samples (count limits number of points returned)
 	points = conn.ts().range(key, '-', '+', count=samples)
 	if not points:
 		print(f"No data for key {key}", file=sys.stderr)
 		return
 	timestamps = [datetime.fromtimestamp(int(ts) / 1000) for ts, _ in points]
-	values = [float(val) for _, val in points]
-
+	values = [int(val) for _, val in points]
 	plt.figure(figsize=(10, 4))
-	plt.plot(timestamps, values, marker='o', linestyle='-')
-	plt.xlabel("Time")
+	line_color = '#999999'
+	plt.plot(timestamps, values, marker=None, linestyle='-', color=line_color)
+	ax = plt.gca()
+	# format x-axis labels as "YYYY-MM-DD H:MM AM/PM"
+	ax.xaxis.set_major_locator(matplotlib.dates.AutoDateLocator())
+	ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(
+		lambda x, _pos: (lambda dt=matplotlib.dates.num2date(x):
+			f"{dt.strftime('%Y-%m-%d')} {(dt.strftime('%I').lstrip('0'))}{dt.strftime(':%M %p')}"
+		)()
+	))
+	plt.gcf().autofmt_xdate(rotation=15, ha='right')
+	# format y-axis labels with human readable totals
+	ax = plt.gca()
+	ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(
+		lambda x, _pos: f"{int(x):,}" if x.is_integer() else f"{x:,.2f}"
+	))
+	plt.xlabel(f"Time ({TIMEZONE})")
 	plt.ylabel("Total Signatures")
-	plt.title(f"Total Signatures Over Time")
-	plt.grid(True)
+	plt.title("Total Signatures Over Time")
+	ax.set_axisbelow(True)
+	ax.grid(True, color='#eaeaea', linewidth=0.8, linestyle='-', alpha=0.9)
+	# determine indices at 0%, 25%, 50%, 75%, 100% of the series
+	n = len(values)
+	if n > 0:
+		indices = sorted({int(round(i * (n - 1) / 4.0)) for i in range(5)})
+		marker_times = [timestamps[i] for i in indices]
+		marker_values = [values[i] for i in indices]
+		# draw and annotate markers at specified positions
+		plt.plot(marker_times, marker_values, 'D', color=line_color)
+		for mt, mv in zip(marker_times, marker_values):
+			label = f"{mv:,}" if mv.is_integer() else f"{mv:,.2f}"
+			plt.annotate(label, (mt, mv), textcoords="offset points", xytext=(0, 4),
+						 ha='center', va='bottom', fontsize=8, clip_on=False)
 	plt.tight_layout()
-	plt.savefig(output_file)
+	plt.savefig(output_file, bbox_inches='tight')
 	plt.close()
 	print(f"Saved plot to {output_file}")
 
