@@ -86,7 +86,7 @@ def generate_graph(conn, key, samples, output_file):
 	Places one marker every one fourth of the graph (including endpoints)
 	and annotates each marker with the total value.
 	'''
-	points = conn.ts().range(key, '-', '+', count=samples)
+	points = conn.ts().revrange(key, '-', '+', count=samples)
 	if not points:
 		print(f"No data for key {key}", file=sys.stderr)
 		return
