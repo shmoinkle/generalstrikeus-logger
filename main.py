@@ -80,16 +80,18 @@ def add_value(conn, key, ts, value):
 	'''
 	conn.ts().add(key, ts, value, retention_msecs=0)
 
-def generate_graph(conn, key, samples, output_file):
+def generate_graph(conn, key, ts_start, ts_end, markers, samples, output_file):
 	'''
-	Generate and save a line graph from the collected totals in Redis.
-	Places one marker every one fourth of the graph (including endpoints)
-	and annotates each marker with the total value.
+	Generate and save a line graph from specified samples/ts in Redis.
+	Places n markers showing key points.
 	'''
-	points = conn.ts().revrange(key, '-', '+', count=samples)
+	if ts_start is None:
+		points = conn.ts().revrange(key, '-', '+', count=samples)
+	else:
+		points = conn.ts().range(key, ts_start, ts_end)
 	if not points:
-		print(f"No data for key {key}", file=sys.stderr)
-		return
+		print(f"No data in specified range for key \"{key}\"", file=sys.stderr)
+		sys.exit(1)
 	timestamps = [datetime.fromtimestamp(int(ts) / 1000) for ts, _ in points]
 	values = [int(val) for _, val in points]
 	plt.figure(figsize=(10, 4))
@@ -114,10 +116,9 @@ def generate_graph(conn, key, samples, output_file):
 	plt.title("Total Signatures Over Time")
 	ax.set_axisbelow(True)
 	ax.grid(True, color='#eaeaea', linewidth=0.8, linestyle='-', alpha=0.9)
-	# determine indices at 0%, 25%, 50%, 75%, 100% of the series
 	n = len(values)
 	if n > 0:
-		indices = sorted({int(round(i * (n - 1) / 4.0)) for i in range(5)})
+		indices = sorted({int(round(i * (n - 1) / (markers - 1))) for i in range(markers)})
 		marker_times = [timestamps[i] for i in indices]
 		marker_values = [values[i] for i in indices]
 		# draw and annotate markers at specified positions
@@ -132,11 +133,16 @@ def generate_graph(conn, key, samples, output_file):
 	print(f"Saved plot to {output_file}")
 
 def parse_args():
-	parser = argparse.ArgumentParser(description="Fetch and graph the total signatures")
+	parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter, description="Fetch and graph the total signatures")
 	group = parser.add_mutually_exclusive_group()
-	group.add_argument("-f", "--fetch", action="store_true", help="Fetch signature total and add to Redis")
-	group.add_argument("-g", "--graph", type=check_type, nargs=2, metavar=("SAMPLES", "OUTPUT_FILE"),
+	group.add_argument("-f", "--fetch", action="store_true",
+					help="Fetch signature total and add to Redis")
+	group.add_argument("-g", "--graph", type=check_type, nargs=2,
+					metavar=("SAMPLES", "OUTPUT_FILE"),
 					help="Generate graph from signature data in Redis.")
+	group.add_argument("-r", "--raw-graph", type=check_type, nargs=4,
+					metavar=("TS_START", "TS_END", "MARKERS", "OUTPUT_FILE"),
+					help="TS_* are raw timestamps in milliseconds.\nMARKERS is the number of annotated points (0-10)")
 	return parser.parse_args()
 
 def main():
@@ -158,9 +164,30 @@ def main():
 		print(f"Stored {total} into {REDIS_TS_KEY}")
 
 	if args.graph:
-		if not isinstance(args.graph[0], int):
+		SAMPLES = args.graph[0]
+		OUTPUT_FILE = str(args.graph[1])
+		if not isinstance(SAMPLES, int):
 			print(f"Number of samples must be an integer", file=sys.stderr)
 			sys.exit(1)
-		generate_graph(r, REDIS_TS_KEY, args.graph[0], str(args.graph[1]))
+		if SAMPLES <= 0:
+			print(f"Number of samples must be greater than 0", file=sys.stderr)
+			sys.exit(1)
+		generate_graph(r, REDIS_TS_KEY, None, None, 5, SAMPLES, OUTPUT_FILE)
+	
+	if args.raw_graph:
+		TS_START = args.raw_graph[0]
+		TS_END = args.raw_graph[1]
+		MARKERS = args.raw_graph[2]
+		OUTPUT_FILE = str(args.raw_graph[3])
+		if not all(isinstance(v, int) for v in [TS_START, TS_END, MARKERS]):
+			print(f"TS_START, TS_END, and MARKERS must be integers", file=sys.stderr)
+			sys.exit(1)
+		if MARKERS < 0 or MARKERS > 10:
+			print(f"MARKERS must be between 0 and 10", file=sys.stderr)
+			sys.exit(1)
+		if TS_START >= TS_END:
+			print(f"TS_START must be less than TS_END", file=sys.stderr)
+			sys.exit(1)
+		generate_graph(r, REDIS_TS_KEY, TS_START, TS_END, MARKERS, None, OUTPUT_FILE)
 if __name__ == "__main__":
 	main()
