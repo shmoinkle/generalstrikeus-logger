@@ -143,6 +143,9 @@ def parse_args():
 	group.add_argument("-r", "--raw-graph", type=check_type, nargs=4,
 					metavar=("TS_START", "TS_END", "MARKERS", "OUTPUT_FILE"),
 					help="TS_* are raw timestamps in milliseconds.\nMARKERS is the number of annotated points (0-10)")
+	if len(sys.argv) == 1:
+		parser.print_help(sys.stderr)
+		sys.exit(1)
 	return parser.parse_args()
 
 def main():
